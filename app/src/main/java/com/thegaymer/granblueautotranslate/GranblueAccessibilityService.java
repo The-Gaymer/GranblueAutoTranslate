@@ -1,6 +1,9 @@
 package com.thegaymer.granblueautotranslate;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
+import android.graphics.Path;
+import android.graphics.Rect;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityEvent;
 import android.os.Handler;
@@ -39,8 +42,8 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 log("Nouvelle page Granblue: " + currentUrl);
             }
 
-            // Exact v5 translation detection: keep the broad matcher because
-            // Chrome does not always expose the same accessibility label.
+            // V5 detection path kept intact. Banner handling is deliberately
+            // separate so it can never block translation.
             if (!translationTriggered) {
                 AccessibilityNodeInfo candidate = findTranslateCandidate(root);
                 if (candidate != null) {
@@ -62,7 +65,6 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 }
             }
 
-            // Banner handling remains independent from translation detection.
             if (containsTranslatedBanner(lowTree)) dismissTranslationBanner(root);
         } finally {
             root.recycle();
@@ -91,22 +93,75 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private void dismissTranslationBanner(AccessibilityNodeInfo root) {
         long now = System.currentTimeMillis();
-        if (now - lastDismissAttempt < 500) return;
+        if (now - lastDismissAttempt < 700) return;
         lastDismissAttempt = now;
+
         List<AccessibilityNodeInfo> nodes = new ArrayList<>();
-        collect(root, nodes);
+        AccessibilityNodeInfo gestureTarget = null;
+        Rect gestureBounds = null;
+
         try {
+            collect(root, nodes);
             for (AccessibilityNodeInfo node : nodes) {
                 String text = nodeText(node).toLowerCase(Locale.ROOT);
                 if (!isTranslatedBannerText(text)) continue;
+
+                // Safest path: use Android's semantic dismiss action. This never
+                // activates Chrome's "Annuler" / undo button.
                 if (tryDismissChain(node)) {
-                    log("Bannière Chrome masquée via ACTION_DISMISS: " + nodeText(node));
+                    log("Bannière Chrome masquée via ACTION_DISMISS");
                     return;
                 }
+
+                // Some Chrome versions expose the translation banner without
+                // ACTION_DISMISS. Remember its container so we can swipe the
+                // banner itself away instead of clicking any child button.
+                AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
+                for (int depth = 0; current != null && depth < 8; depth++) {
+                    Rect bounds = new Rect();
+                    current.getBoundsInScreen(bounds);
+                    if (bounds.width() >= 250 && bounds.height() >= 45) {
+                        if (gestureTarget != null) gestureTarget.recycle();
+                        gestureTarget = current;
+                        gestureBounds = bounds;
+                        current = null;
+                        break;
+                    }
+                    AccessibilityNodeInfo parent = current.getParent();
+                    current.recycle();
+                    current = parent;
+                }
+                if (gestureTarget != null) break;
+            }
+
+            if (gestureTarget != null && gestureBounds != null) {
+                boolean sent = swipeBannerAway(gestureBounds);
+                log("Bannière Chrome masquée par geste = " + sent);
             }
         } finally {
+            if (gestureTarget != null) gestureTarget.recycle();
             for (AccessibilityNodeInfo node : nodes) node.recycle();
         }
+    }
+
+    private boolean swipeBannerAway(Rect bounds) {
+        // Chrome's translation message is a dismissible snackbar/banner. Swipe
+        // horizontally across its own bounds; never touch its "Annuler" button.
+        float y = bounds.centerY();
+        float startX = bounds.left + Math.max(40, bounds.width() * 0.20f);
+        float endX = bounds.right - Math.max(40, bounds.width() * 0.20f);
+        if (endX <= startX) return false;
+
+        Path path = new Path();
+        path.moveTo(startX, y);
+        path.lineTo(endX, y);
+
+        GestureDescription.StrokeDescription stroke =
+                new GestureDescription.StrokeDescription(path, 0, 250);
+        GestureDescription gesture = new GestureDescription.Builder()
+                .addStroke(stroke)
+                .build();
+        return dispatchGesture(gesture, null, handler);
     }
 
     private boolean isTranslatedBannerText(String text) {
