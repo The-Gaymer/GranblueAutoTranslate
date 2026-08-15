@@ -28,9 +28,6 @@ public class GranblueAccessibilityService extends AccessibilityService {
         try {
             String treeText = flattenText(root);
             boolean granblue = treeText.toLowerCase(Locale.ROOT).contains(DOMAIN);
-
-            // Chrome may expose the current URL as an address-bar node.
-            // We deliberately require the Granblue domain before acting.
             if (!granblue) return;
 
             log("Chrome + Granblue détecté (" + event.getEventType() + ")");
@@ -62,12 +59,19 @@ public class GranblueAccessibilityService extends AccessibilityService {
         int bestScore = -1;
 
         for (AccessibilityNodeInfo node : nodes) {
-            if (!isTranslationLabel(nodeText(node))) continue;
+            String text = nodeText(node);
+            if (!isTranslationLabel(text)) continue;
 
             AccessibilityNodeInfo target = findClickableTarget(node);
-            if (target == null) continue;
+            if (target == null) {
+                log("Libellé traduction trouvé mais non cliquable: " + text);
+                continue;
+            }
 
             int score = 10;
+            String low = text.toLowerCase(Locale.ROOT);
+            if (low.contains("traduire la page") || low.contains("translate page")) score += 20;
+            if (low.contains("google traduction") || low.contains("google translate")) score += 15;
             if (node.isClickable()) score += 10;
             if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
             String viewId = target.getViewIdResourceName();
@@ -95,19 +99,19 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private boolean isTranslationLabel(String text) {
         String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-        return low.equals("traduire")
-                || low.startsWith("traduire la page")
-                || low.startsWith("traduire en ")
-                || low.startsWith("traduire de ")
-                || low.equals("translate")
-                || low.startsWith("translate page")
-                || low.startsWith("translate to ")
-                || low.startsWith("translate from ");
+        if (low.isEmpty()) return false;
+
+        return low.contains("traduire")
+                || low.contains("traduction")
+                || low.contains("translate")
+                || low.contains("translation")
+                || low.contains("google traduction")
+                || low.contains("google translate");
     }
 
     private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
-        for (int depth = 0; current != null && depth < 4; depth++) {
+        for (int depth = 0; current != null && depth < 8; depth++) {
             if (current.isClickable() && current.isEnabled()) return current;
             AccessibilityNodeInfo parent = current.getParent();
             current.recycle();
