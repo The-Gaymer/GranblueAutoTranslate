@@ -18,7 +18,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private static final String TAG = "GranblueAutoTranslate";
     private static final String CHROME = "com.android.chrome";
     private static final String DOMAIN = "steam.granbluefantasy.com";
-    private static final long TRANSLATION_DELAY_MS = 3000;
+    private static final long TRANSLATION_DELAY_MS = 2000;
     private static final long BANNER_DISMISS_DELAY_MS = 1000;
 
     private boolean translationTriggered = false;
@@ -46,7 +46,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
                 // Wait for Granblue's page to finish loading before looking for
                 // Chrome's translation button. Any later URL change cancels this
-                // timer and starts a fresh 3-second delay.
+                // timer and starts a fresh 2-second delay.
                 scheduleTranslation(currentUrl);
             }
 
@@ -74,7 +74,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
                 String currentUrl = findCurrentUrl(root);
                 if (currentUrl.isEmpty() || !currentUrl.equals(scheduledUrl)) {
-                    log("Traduction annulée: la page a changé pendant les 3 secondes d'attente.");
+                    log("Traduction annulée: la page a changé pendant les 2 secondes d'attente.");
                     return;
                 }
 
@@ -86,7 +86,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
                 AccessibilityNodeInfo candidate = findTranslateCandidate(root);
                 if (candidate == null) {
-                    log("Bouton Traduire non trouvé après 3 secondes.");
+                    log("Bouton Traduire non trouvé après 2 secondes.");
                     return;
                 }
 
