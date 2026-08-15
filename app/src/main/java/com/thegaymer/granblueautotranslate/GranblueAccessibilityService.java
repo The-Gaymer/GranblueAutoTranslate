@@ -37,12 +37,16 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
             AccessibilityNodeInfo candidate = findTranslateCandidate(root);
             if (candidate != null) {
-                long now = System.currentTimeMillis();
-                if (now - lastClick > 1800) {
-                    lastClick = now;
-                    log("Bouton de traduction trouvé: " + describe(candidate));
-                    boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    log("ACTION_CLICK = " + ok);
+                try {
+                    long now = System.currentTimeMillis();
+                    if (now - lastClick > 1800) {
+                        lastClick = now;
+                        log("Bouton de traduction trouvé: " + describe(candidate));
+                        boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        log("ACTION_CLICK = " + ok);
+                    }
+                } finally {
+                    candidate.recycle();
                 }
             }
         } finally {
@@ -57,41 +61,65 @@ public class GranblueAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo best = null;
         int bestScore = -1;
 
-        for (AccessibilityNodeInfo n : nodes) {
-            CharSequence t = n.getText();
-            CharSequence d = n.getContentDescription();
-            String text = ((t == null ? "" : t.toString()) + " " +
-                    (d == null ? "" : d.toString())).trim();
-            String low = text.toLowerCase(Locale.ROOT);
+        for (AccessibilityNodeInfo node : nodes) {
+            if (!isTranslationLabel(nodeText(node))) continue;
 
-            boolean exactFrench = low.equals("traduire") || low.equals("traduire la page");
-            boolean exactEnglish = low.equals("translate") || low.equals("translate page");
-            if (!exactFrench && !exactEnglish) continue;
+            AccessibilityNodeInfo target = findClickableTarget(node);
+            if (target == null) continue;
 
             int score = 10;
-            if (n.isClickable()) score += 10;
-            if ("android.widget.Button".equals(n.getClassName())) score += 5;
-
-            // Avoid page text that merely contains the word.
-            if (!n.isClickable() && !n.isFocusable()) score -= 8;
+            if (node.isClickable()) score += 10;
+            if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
+            String viewId = target.getViewIdResourceName();
+            if (viewId != null && viewId.startsWith(CHROME + ":")) score += 8;
 
             if (score > bestScore) {
                 if (best != null) best.recycle();
-                best = AccessibilityNodeInfo.obtain(n);
+                best = target;
                 bestScore = score;
+            } else {
+                target.recycle();
             }
         }
 
-        for (AccessibilityNodeInfo n : nodes) {
-            if (n != best) n.recycle();
-        }
+        for (AccessibilityNodeInfo node : nodes) node.recycle();
         return best;
     }
 
-    private void collect(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out) {
-        out.add(AccessibilityNodeInfo.obtain(n));
-        for (int i = 0; i < n.getChildCount(); i++) {
-            AccessibilityNodeInfo child = n.getChild(i);
+    private String nodeText(AccessibilityNodeInfo node) {
+        CharSequence text = node.getText();
+        CharSequence description = node.getContentDescription();
+        return ((text == null ? "" : text.toString()) + " "
+                + (description == null ? "" : description.toString())).trim();
+    }
+
+    private boolean isTranslationLabel(String text) {
+        String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+        return low.equals("traduire")
+                || low.startsWith("traduire la page")
+                || low.startsWith("traduire en ")
+                || low.startsWith("traduire de ")
+                || low.equals("translate")
+                || low.startsWith("translate page")
+                || low.startsWith("translate to ")
+                || low.startsWith("translate from ");
+    }
+
+    private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
+        for (int depth = 0; current != null && depth < 4; depth++) {
+            if (current.isClickable() && current.isEnabled()) return current;
+            AccessibilityNodeInfo parent = current.getParent();
+            current.recycle();
+            current = parent;
+        }
+        return null;
+    }
+
+    private void collect(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+        out.add(AccessibilityNodeInfo.obtain(node));
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 collect(child, out);
                 child.recycle();
@@ -99,23 +127,23 @@ public class GranblueAccessibilityService extends AccessibilityService {
         }
     }
 
-    private String flattenText(AccessibilityNodeInfo n) {
+    private String flattenText(AccessibilityNodeInfo node) {
         StringBuilder sb = new StringBuilder();
-        if (n.getText() != null) sb.append(n.getText()).append(' ');
-        if (n.getContentDescription() != null) sb.append(n.getContentDescription()).append(' ');
-        for (int i = 0; i < n.getChildCount(); i++) {
-            AccessibilityNodeInfo c = n.getChild(i);
-            if (c != null) {
-                sb.append(flattenText(c)).append(' ');
-                c.recycle();
+        if (node.getText() != null) sb.append(node.getText()).append(' ');
+        if (node.getContentDescription() != null) sb.append(node.getContentDescription()).append(' ');
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                sb.append(flattenText(child)).append(' ');
+                child.recycle();
             }
         }
         return sb.toString();
     }
 
-    private String describe(AccessibilityNodeInfo n) {
-        return "text=" + n.getText() + ", desc=" + n.getContentDescription()
-                + ", class=" + n.getClassName() + ", clickable=" + n.isClickable();
+    private String describe(AccessibilityNodeInfo node) {
+        return "text=" + node.getText() + ", desc=" + node.getContentDescription()
+                + ", class=" + node.getClassName() + ", clickable=" + node.isClickable();
     }
 
     private void log(String s) {
@@ -123,7 +151,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
         String old = getSharedPreferences("log", MODE_PRIVATE)
                 .getString("text", "");
         String line = System.currentTimeMillis() + "  " + s + "\n";
-        String combined = (line + old);
+        String combined = line + old;
         if (combined.length() > 12000) combined = combined.substring(0, 12000);
         getSharedPreferences("log", MODE_PRIVATE).edit().putString("text", combined).apply();
     }
