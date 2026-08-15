@@ -18,12 +18,15 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private static final String TAG = "GranblueAutoTranslate";
     private static final String CHROME = "com.android.chrome";
     private static final String DOMAIN = "steam.granbluefantasy.com";
+    private static final long TRANSLATION_DELAY_MS = 3000;
+    private static final long BANNER_DISMISS_DELAY_MS = 1000;
 
     private boolean translationTriggered = false;
     private String lastUrl = "";
     private long lastClick = 0;
     private long lastDismissAttempt = 0;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable pendingTranslation;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -40,35 +43,74 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 lastUrl = currentUrl;
                 translationTriggered = false;
                 log("Nouvelle page Granblue: " + currentUrl);
+
+                // Wait for Granblue's page to finish loading before looking for
+                // Chrome's translation button. Any later URL change cancels this
+                // timer and starts a fresh 3-second delay.
+                scheduleTranslation(currentUrl);
             }
 
-            // V5 detection path kept intact. Banner handling is deliberately
-            // separate so it can never block translation.
-            if (!translationTriggered) {
-                AccessibilityNodeInfo candidate = findTranslateCandidate(root);
-                if (candidate != null) {
-                    try {
-                        long now = System.currentTimeMillis();
-                        if (now - lastClick > 1800) {
-                            lastClick = now;
-                            log("Bouton de traduction trouvé: " + describe(candidate));
-                            boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                            log("ACTION_CLICK = " + ok);
-                            if (ok) {
-                                translationTriggered = true;
-                                scheduleDismissTranslationBanner();
-                            }
-                        }
-                    } finally {
-                        candidate.recycle();
-                    }
-                }
+            // V5 detection path kept intact. The actual click now happens only
+            // from the delayed translation task above, so loading screens cannot
+            // trigger translation prematurely.
+            if (translationTriggered) {
+                // Nothing to do here; translation for this URL was already sent.
             }
-
-            if (containsTranslatedBanner(lowTree)) dismissTranslationBanner(root);
         } finally {
             root.recycle();
         }
+    }
+
+    private void scheduleTranslation(final String scheduledUrl) {
+        if (pendingTranslation != null) {
+            handler.removeCallbacks(pendingTranslation);
+        }
+
+        pendingTranslation = () -> {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                if (!CHROME.equals(root.getPackageName())) return;
+
+                String currentUrl = findCurrentUrl(root);
+                if (currentUrl.isEmpty() || !currentUrl.equals(scheduledUrl)) {
+                    log("Traduction annulée: la page a changé pendant les 3 secondes d'attente.");
+                    return;
+                }
+
+                String treeText = flattenText(root);
+                String lowTree = treeText.toLowerCase(Locale.ROOT);
+                if (!lowTree.contains(DOMAIN)) return;
+
+                if (translationTriggered) return;
+
+                AccessibilityNodeInfo candidate = findTranslateCandidate(root);
+                if (candidate == null) {
+                    log("Bouton Traduire non trouvé après 3 secondes.");
+                    return;
+                }
+
+                try {
+                    long now = System.currentTimeMillis();
+                    if (now - lastClick <= 1800) return;
+
+                    lastClick = now;
+                    log("Bouton de traduction trouvé: " + describe(candidate));
+                    boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    log("ACTION_CLICK = " + ok);
+                    if (ok) {
+                        translationTriggered = true;
+                        scheduleDismissTranslationBanner();
+                    }
+                } finally {
+                    candidate.recycle();
+                }
+            } finally {
+                root.recycle();
+            }
+        };
+
+        handler.postDelayed(pendingTranslation, TRANSLATION_DELAY_MS);
     }
 
     private boolean containsTranslatedBanner(String text) {
@@ -84,11 +126,13 @@ public class GranblueAccessibilityService extends AccessibilityService {
             try {
                 if (!CHROME.equals(root.getPackageName())) return;
                 String text = flattenText(root).toLowerCase(Locale.ROOT);
-                if (text.contains(DOMAIN) && containsTranslatedBanner(text)) dismissTranslationBanner(root);
+                if (text.contains(DOMAIN) && containsTranslatedBanner(text)) {
+                    dismissTranslationBanner(root);
+                }
             } finally {
                 root.recycle();
             }
-        }, 300);
+        }, BANNER_DISMISS_DELAY_MS);
     }
 
     private void dismissTranslationBanner(AccessibilityNodeInfo root) {
