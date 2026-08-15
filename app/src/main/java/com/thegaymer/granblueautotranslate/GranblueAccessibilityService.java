@@ -28,39 +28,36 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
         try {
             String treeText = flattenText(root);
-            String lowTree = treeText.toLowerCase(Locale.ROOT);
-            boolean granblue = lowTree.contains(DOMAIN);
+            boolean granblue = treeText.toLowerCase(Locale.ROOT).contains(DOMAIN);
             if (!granblue) return;
 
             log("Chrome + Granblue détecté (" + event.getEventType() + ")");
 
-            // IMPORTANT: do not block translation just because Chrome's previous
-            // "Page traduite / Annuler" message is still present. That message can
-            // remain in Chrome while the user navigates to another Granblue page.
-            // We only act when an actual "Traduire" control is present.
+            // Base = version 5: keep the broad translation-button detection that
+            // was confirmed working. Banner handling must never block this path.
             AccessibilityNodeInfo candidate = findTranslateCandidate(root);
             if (candidate != null) {
                 try {
                     long now = System.currentTimeMillis();
-                    if (now - lastClick > 1500) {
+                    if (now - lastClick > 1800) {
+                        lastClick = now;
                         log("Bouton de traduction trouvé: " + describe(candidate));
                         boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         log("ACTION_CLICK = " + ok);
-                        if (ok) {
-                            lastClick = now;
-                            // Chrome creates the translated-page message asynchronously.
-                            // Try to dismiss only that message, never its "Annuler" action.
-                            scheduleDismissTranslationBanner();
-                        }
+
+                        // Chrome shows its "Page traduite" banner asynchronously.
+                        // Try to dismiss that banner after the translation click,
+                        // without touching the translation itself.
+                        if (ok) scheduleDismissTranslationBanner();
                     }
                 } finally {
                     candidate.recycle();
                 }
             }
 
-            // Also handle the case where the banner appears after translation and
-            // no new translation-button event is generated.
-            if (containsTranslatedBanner(lowTree)) {
+            // The banner can also appear on a later accessibility event.
+            // This is completely independent from translation-button detection.
+            if (containsTranslatedBanner(treeText.toLowerCase(Locale.ROOT))) {
                 dismissTranslationBanner(root);
             }
         } finally {
@@ -80,40 +77,42 @@ public class GranblueAccessibilityService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                if (CHROME.equals(root.getPackageName())) {
-                    String text = flattenText(root).toLowerCase(Locale.ROOT);
-                    if (text.contains(DOMAIN) && containsTranslatedBanner(text)) {
-                        dismissTranslationBanner(root);
-                    }
+                if (!CHROME.equals(root.getPackageName())) return;
+                String treeText = flattenText(root);
+                String lowTree = treeText.toLowerCase(Locale.ROOT);
+                if (lowTree.contains(DOMAIN) && containsTranslatedBanner(lowTree)) {
+                    dismissTranslationBanner(root);
                 }
             } finally {
                 root.recycle();
             }
-        }, 250);
+        }, 300);
     }
 
     private void dismissTranslationBanner(AccessibilityNodeInfo root) {
         long now = System.currentTimeMillis();
-        if (now - lastDismissAttempt < 300) return;
+        if (now - lastDismissAttempt < 500) return;
         lastDismissAttempt = now;
 
         List<AccessibilityNodeInfo> nodes = new ArrayList<>();
         collect(root, nodes);
 
-        for (AccessibilityNodeInfo node : nodes) {
-            String text = nodeText(node).toLowerCase(Locale.ROOT);
-            if (!isTranslatedBannerText(text)) continue;
+        try {
+            for (AccessibilityNodeInfo node : nodes) {
+                String text = nodeText(node).toLowerCase(Locale.ROOT);
+                if (!isTranslatedBannerText(text)) continue;
 
-            // ACTION_DISMISS is specifically intended for dismissable accessibility
-            // nodes. It hides the message without clicking Chrome's "Annuler" button,
-            // so it must not undo the translation.
-            if (tryDismissChain(node)) {
-                log("Bannière Chrome " + nodeText(node) + " masquée via ACTION_DISMISS");
-                break;
+                // Only use ACTION_DISMISS on the banner itself or one of its
+                // parents. Never click a button labelled "Annuler" because that
+                // would undo the translation.
+                if (tryDismissChain(node)) {
+                    log("Bannière Chrome masquée via ACTION_DISMISS: " + nodeText(node));
+                    break;
+                }
             }
+        } finally {
+            for (AccessibilityNodeInfo node : nodes) node.recycle();
         }
-
-        for (AccessibilityNodeInfo node : nodes) node.recycle();
     }
 
     private boolean isTranslatedBannerText(String text) {
@@ -126,12 +125,12 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private boolean tryDismissChain(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
         for (int depth = 0; current != null && depth < 8; depth++) {
-            if (hasAction(current, AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS)) {
+            if (hasDismissAction(current)) {
                 boolean ok = current.performAction(AccessibilityNodeInfo.ACTION_DISMISS);
-                if (ok) {
-                    current.recycle();
-                    return true;
-                }
+                current.recycle();
+                if (ok) return true;
+                current = null;
+                continue;
             }
 
             AccessibilityNodeInfo parent = current.getParent();
@@ -141,10 +140,10 @@ public class GranblueAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private boolean hasAction(AccessibilityNodeInfo node, AccessibilityNodeInfo.AccessibilityAction action) {
+    private boolean hasDismissAction(AccessibilityNodeInfo node) {
         List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
-        for (AccessibilityNodeInfo.AccessibilityAction available : actions) {
-            if (available.getId() == action.getId()) return true;
+        for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+            if (action.getId() == AccessibilityNodeInfo.ACTION_DISMISS) return true;
         }
         return false;
     }
@@ -157,12 +156,19 @@ public class GranblueAccessibilityService extends AccessibilityService {
         int bestScore = -1;
 
         for (AccessibilityNodeInfo node : nodes) {
-            if (!isTranslationLabel(nodeText(node))) continue;
+            String text = nodeText(node);
+            if (!isTranslationLabel(text)) continue;
 
             AccessibilityNodeInfo target = findClickableTarget(node);
-            if (target == null) continue;
+            if (target == null) {
+                log("Libellé traduction trouvé mais non cliquable: " + text);
+                continue;
+            }
 
             int score = 10;
+            String low = text.toLowerCase(Locale.ROOT);
+            if (low.contains("traduire la page") || low.contains("translate page")) score += 20;
+            if (low.contains("google traduction") || low.contains("google translate")) score += 15;
             if (node.isClickable()) score += 10;
             if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
             String viewId = target.getViewIdResourceName();
@@ -190,14 +196,14 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private boolean isTranslationLabel(String text) {
         String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-        return low.equals("traduire")
-                || low.startsWith("traduire la page")
-                || low.startsWith("traduire en ")
-                || low.startsWith("traduire de ")
-                || low.equals("translate")
-                || low.startsWith("translate page")
-                || low.startsWith("translate to ")
-                || low.startsWith("translate from ");
+        if (low.isEmpty()) return false;
+
+        return low.contains("traduire")
+                || low.contains("traduction")
+                || low.contains("translate")
+                || low.contains("translation")
+                || low.contains("google traduction")
+                || low.contains("google translate");
     }
 
     private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
@@ -234,26 +240,6 @@ public class GranblueAccessibilityService extends AccessibilityService {
             }
         }
         return sb.toString();
-    }
-
-    private String findCurrentUrl(AccessibilityNodeInfo node) {
-        String viewId = node.getViewIdResourceName();
-        if (viewId != null && viewId.toLowerCase(Locale.ROOT).contains("url_bar")) {
-            CharSequence text = node.getText();
-            CharSequence desc = node.getContentDescription();
-            String value = text != null ? text.toString() : (desc != null ? desc.toString() : "");
-            if (value.contains(DOMAIN)) return value;
-        }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                String result = findCurrentUrl(child);
-                child.recycle();
-                if (!result.isEmpty()) return result;
-            }
-        }
-        return "";
     }
 
     private String describe(AccessibilityNodeInfo node) {
