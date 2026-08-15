@@ -19,7 +19,6 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private static final String CHROME = "com.android.chrome";
     private static final String DOMAIN = "steam.granbluefantasy.com";
 
-    // Successful v5 behaviour: translate once per detected URL.
     private boolean translationTriggered = false;
     private String lastUrl = "";
     private long lastClick = 0;
@@ -45,33 +44,33 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 log("Nouvelle page Granblue: " + currentUrl);
             }
 
-            // Banner handling is deliberately independent from translation.
-            // Stale Chrome accessibility text must NEVER block a new translation.
-            if (containsTranslatedBanner(lowTree)) {
-                dismissTranslationBanner(root);
+            // IMPORTANT: this is the v5 detection that was actually working.
+            // Keep it broad because Chrome does not always expose the exact same
+            // accessibility label for its Translate control.
+            if (!translationTriggered) {
+                AccessibilityNodeInfo candidate = findTranslateCandidate(root);
+                if (candidate != null) {
+                    try {
+                        long now = System.currentTimeMillis();
+                        if (now - lastClick > 1800) {
+                            lastClick = now;
+                            log("Bouton de traduction trouvé: " + describe(candidate));
+                            boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            log("ACTION_CLICK = " + ok);
+                            if (ok) {
+                                translationTriggered = true;
+                                scheduleDismissTranslationBanner();
+                            }
+                        }
+                    } finally {
+                        candidate.recycle();
+                    }
+                }
             }
 
-            // Anti-spam: after Chrome accepts the click, never click the same
-            // Translate control again until the URL changes.
-            if (translationTriggered) return;
-
-            AccessibilityNodeInfo candidate = findTranslateCandidate(root);
-            if (candidate != null) {
-                try {
-                    long now = System.currentTimeMillis();
-                    if (now - lastClick > 1500) {
-                        log("Bouton de traduction trouvé: " + describe(candidate));
-                        boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        log("ACTION_CLICK = " + ok);
-                        if (ok) {
-                            lastClick = now;
-                            translationTriggered = true;
-                            scheduleDismissTranslationBanner();
-                        }
-                    }
-                } finally {
-                    candidate.recycle();
-                }
+            // Banner handling is independent and must never prevent translation.
+            if (containsTranslatedBanner(lowTree)) {
+                dismissTranslationBanner(root);
             }
         } finally {
             root.recycle();
@@ -100,66 +99,27 @@ public class GranblueAccessibilityService extends AccessibilityService {
             } finally {
                 root.recycle();
             }
-        }, 250);
+        }, 300);
     }
 
     private void dismissTranslationBanner(AccessibilityNodeInfo root) {
         long now = System.currentTimeMillis();
-        if (now - lastDismissAttempt < 700) return;
+        if (now - lastDismissAttempt < 500) return;
         lastDismissAttempt = now;
 
         List<AccessibilityNodeInfo> nodes = new ArrayList<>();
         collect(root, nodes);
 
-        AccessibilityNodeInfo bestBanner = null;
-        Rect bestBounds = null;
-        long bestArea = Long.MAX_VALUE;
-
         try {
             for (AccessibilityNodeInfo node : nodes) {
                 String text = nodeText(node).toLowerCase(Locale.ROOT);
-                if (!isTranslatedBannerText(text) || !node.isVisibleToUser()) continue;
-
-                // Prefer Android's semantic dismiss action. Do not click any
-                // Chrome action such as "Annuler".
+                if (!isTranslatedBannerText(text)) continue;
                 if (tryDismissChain(node)) {
-                    log("Bannière Chrome masquée via ACTION_DISMISS");
+                    log("Bannière Chrome masquée via ACTION_DISMISS: " + nodeText(node));
                     return;
                 }
-
-                // Find the SMALLEST visible ancestor that looks like a snackbar,
-                // rather than accidentally selecting Chrome's whole window.
-                AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
-                for (int depth = 0; current != null && depth < 8; depth++) {
-                    Rect bounds = new Rect();
-                    current.getBoundsInScreen(bounds);
-                    long area = (long) Math.max(0, bounds.width()) * Math.max(0, bounds.height());
-
-                    if (current.isVisibleToUser()
-                            && bounds.width() >= 250
-                            && bounds.height() >= 45
-                            && bounds.height() <= 300
-                            && area < bestArea) {
-                        if (bestBanner != null) bestBanner.recycle();
-                        bestBanner = current;
-                        bestBounds = bounds;
-                        bestArea = area;
-                        current = null;
-                        break;
-                    }
-
-                    AccessibilityNodeInfo parent = current.getParent();
-                    current.recycle();
-                    current = parent;
-                }
-            }
-
-            if (bestBanner != null && bestBounds != null) {
-                boolean sent = swipeBannerAway(bestBounds);
-                log("Bannière Chrome masquée par geste = " + sent);
             }
         } finally {
-            if (bestBanner != null) bestBanner.recycle();
             for (AccessibilityNodeInfo node : nodes) node.recycle();
         }
     }
@@ -176,7 +136,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private boolean tryDismissChain(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
         for (int depth = 0; current != null && depth < 8; depth++) {
-            if (hasAction(current, AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS)) {
+            if (hasDismissAction(current)) {
                 boolean ok = current.performAction(AccessibilityNodeInfo.ACTION_DISMISS);
                 current.recycle();
                 return ok;
@@ -188,30 +148,11 @@ public class GranblueAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private boolean hasAction(AccessibilityNodeInfo node, AccessibilityNodeInfo.AccessibilityAction action) {
-        for (AccessibilityNodeInfo.AccessibilityAction available : node.getActionList()) {
-            if (available.getId() == action.getId()) return true;
+    private boolean hasDismissAction(AccessibilityNodeInfo node) {
+        for (AccessibilityNodeInfo.AccessibilityAction action : node.getActionList()) {
+            if (action.getId() == AccessibilityNodeInfo.ACTION_DISMISS) return true;
         }
         return false;
-    }
-
-    private boolean swipeBannerAway(Rect bounds) {
-        // Snackbar-style Chrome messages are dismissed with a horizontal swipe.
-        float startY = bounds.centerY();
-        float startX = bounds.right - Math.max(40, bounds.width() / 5f);
-        float endX = Math.max(1, bounds.left - Math.max(120, bounds.width() / 2f));
-
-        Path path = new Path();
-        path.moveTo(startX, startY);
-        path.lineTo(endX, startY);
-
-        GestureDescription.StrokeDescription stroke =
-                new GestureDescription.StrokeDescription(path, 0, 220);
-        GestureDescription gesture = new GestureDescription.Builder()
-                .addStroke(stroke)
-                .build();
-
-        return dispatchGesture(gesture, null, handler);
     }
 
     private AccessibilityNodeInfo findTranslateCandidate(AccessibilityNodeInfo root) {
@@ -223,12 +164,19 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
         try {
             for (AccessibilityNodeInfo node : nodes) {
-                if (!isTranslationLabel(nodeText(node))) continue;
+                String text = nodeText(node);
+                if (!isTranslationLabel(text)) continue;
 
                 AccessibilityNodeInfo target = findClickableTarget(node);
-                if (target == null) continue;
+                if (target == null) {
+                    log("Libellé traduction trouvé mais non cliquable: " + text);
+                    continue;
+                }
 
                 int score = 10;
+                String low = text.toLowerCase(Locale.ROOT);
+                if (low.contains("traduire la page") || low.contains("translate page")) score += 20;
+                if (low.contains("google traduction") || low.contains("google translate")) score += 15;
                 if (node.isClickable()) score += 10;
                 if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
                 String viewId = target.getViewIdResourceName();
@@ -257,14 +205,17 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private boolean isTranslationLabel(String text) {
         String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-        return low.equals("traduire")
-                || low.startsWith("traduire la page")
-                || low.startsWith("traduire en ")
-                || low.startsWith("traduire de ")
-                || low.equals("translate")
-                || low.startsWith("translate page")
-                || low.startsWith("translate to ")
-                || low.startsWith("translate from ");
+        if (low.isEmpty()) return false;
+
+        // Exact v5 principle: broad matching, because Chrome's accessibility
+        // tree may expose "Traduire", "Traduction", "Google Traduction",
+        // "Translate", etc. in different nodes/versions.
+        return low.contains("traduire")
+                || low.contains("traduction")
+                || low.contains("translate")
+                || low.contains("translation")
+                || low.contains("google traduction")
+                || low.contains("google translate");
     }
 
     private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
