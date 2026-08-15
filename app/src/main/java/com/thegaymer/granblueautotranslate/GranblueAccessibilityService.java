@@ -16,6 +16,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
     private static final String CHROME = "com.android.chrome";
     private static final String DOMAIN = "steam.granbluefantasy.com";
     private long lastClick = 0;
+    private String lastTranslatedUrl = "";
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -32,15 +33,40 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
             log("Chrome + Granblue détecté (" + event.getEventType() + ")");
 
+            // Chrome displays a "Page traduite / Annuler" banner after translation.
+            // If it is already present, do NOT click Traduire again: repeated clicks
+            // keep reopening/spamming that banner and make navigation painful.
+            String lowTree = treeText.toLowerCase(Locale.ROOT);
+            if (lowTree.contains("page traduite") && lowTree.contains("annuler")) {
+                return;
+            }
+
+            String currentUrl = findCurrentUrl(root);
+            if (currentUrl.isEmpty()) {
+                // If Chrome doesn't expose the URL in this accessibility event,
+                // retain the old short debounce as a safe fallback.
+                if (System.currentTimeMillis() - lastClick < 5000) return;
+            } else if (currentUrl.equals(lastTranslatedUrl)) {
+                // Already translated this page. The translation remains active while
+                // the user navigates within the same document/URL.
+                return;
+            }
+
             AccessibilityNodeInfo candidate = findTranslateCandidate(root);
             if (candidate != null) {
                 try {
                     long now = System.currentTimeMillis();
-                    if (now - lastClick > 1800) {
-                        lastClick = now;
+                    if (now - lastClick > 1500) {
                         log("Bouton de traduction trouvé: " + describe(candidate));
                         boolean ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         log("ACTION_CLICK = " + ok);
+                        if (ok) {
+                            lastClick = now;
+                            if (!currentUrl.isEmpty()) {
+                                lastTranslatedUrl = currentUrl;
+                                log("Traduction déclenchée pour: " + currentUrl);
+                            }
+                        }
                     }
                 } finally {
                     candidate.recycle();
@@ -59,19 +85,12 @@ public class GranblueAccessibilityService extends AccessibilityService {
         int bestScore = -1;
 
         for (AccessibilityNodeInfo node : nodes) {
-            String text = nodeText(node);
-            if (!isTranslationLabel(text)) continue;
+            if (!isTranslationLabel(nodeText(node))) continue;
 
             AccessibilityNodeInfo target = findClickableTarget(node);
-            if (target == null) {
-                log("Libellé traduction trouvé mais non cliquable: " + text);
-                continue;
-            }
+            if (target == null) continue;
 
             int score = 10;
-            String low = text.toLowerCase(Locale.ROOT);
-            if (low.contains("traduire la page") || low.contains("translate page")) score += 20;
-            if (low.contains("google traduction") || low.contains("google translate")) score += 15;
             if (node.isClickable()) score += 10;
             if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
             String viewId = target.getViewIdResourceName();
@@ -99,14 +118,14 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private boolean isTranslationLabel(String text) {
         String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-        if (low.isEmpty()) return false;
-
-        return low.contains("traduire")
-                || low.contains("traduction")
-                || low.contains("translate")
-                || low.contains("translation")
-                || low.contains("google traduction")
-                || low.contains("google translate");
+        return low.equals("traduire")
+                || low.startsWith("traduire la page")
+                || low.startsWith("traduire en ")
+                || low.startsWith("traduire de ")
+                || low.equals("translate")
+                || low.startsWith("translate page")
+                || low.startsWith("translate to ")
+                || low.startsWith("translate from ");
     }
 
     private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
@@ -118,6 +137,26 @@ public class GranblueAccessibilityService extends AccessibilityService {
             current = parent;
         }
         return null;
+    }
+
+    private String findCurrentUrl(AccessibilityNodeInfo node) {
+        String viewId = node.getViewIdResourceName();
+        if (viewId != null && viewId.toLowerCase(Locale.ROOT).contains("url_bar")) {
+            CharSequence text = node.getText();
+            CharSequence desc = node.getContentDescription();
+            String value = text != null ? text.toString() : (desc != null ? desc.toString() : "");
+            if (value.contains(DOMAIN)) return value;
+        }
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                String result = findCurrentUrl(child);
+                child.recycle();
+                if (!result.isEmpty()) return result;
+            }
+        }
+        return "";
     }
 
     private void collect(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
