@@ -9,6 +9,7 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.content.ComponentName;
 
 public class MainActivity extends Activity {
     private TextView status;
@@ -63,17 +64,32 @@ public class MainActivity extends Activity {
     }
 
     private void refresh() {
-        boolean enabled = false;
-        String enabledServices = Settings.Secure.getString(
-                getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (enabledServices != null &&
-                enabledServices.contains(getPackageName() + "/.GranblueAccessibilityService")) {
-            enabled = true;
+    boolean enabled = false;
+
+    String enabledServices = Settings.Secure.getString(
+            getContentResolver(),
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    );
+
+    String expected = new ComponentName(
+            this,
+            GranblueAccessibilityService.class
+    ).flattenToString();
+
+    if (enabledServices != null) {
+        for (String service : enabledServices.split(":")) {
+            if (expected.equalsIgnoreCase(service)) {
+                enabled = true;
+                break;
+            }
         }
-        status.setText(enabled
-                ? "🟢 Service actif\nSurveillance de Chrome + Granblue."
-                : "🔴 Service inactif\nActive-le dans les paramètres d'accessibilité.");
-        String text = getSharedPreferences("log", MODE_PRIVATE).getString("text", "Aucun événement.");
-        log.setText(text);
     }
+
+    status.setText(enabled
+            ? "🟢 Service actif\nSurveillance de Chrome + Granblue."
+            : "🔴 Service inactif\nActive-le dans les paramètres d'accessibilité.");
+
+    String text = getSharedPreferences("log", MODE_PRIVATE)
+            .getString("text", "Aucun événement.");
+    log.setText(text);
 }
