@@ -39,8 +39,8 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 log("Nouvelle page Granblue: " + currentUrl);
             }
 
-            // Only accept Chrome's actual Translate control. Do not match
-            // arbitrary page/tab titles containing "translation" or "traduction".
+            // Exact v5 translation detection: keep the broad matcher because
+            // Chrome does not always expose the same accessibility label.
             if (!translationTriggered) {
                 AccessibilityNodeInfo candidate = findTranslateCandidate(root);
                 if (candidate != null) {
@@ -62,7 +62,7 @@ public class GranblueAccessibilityService extends AccessibilityService {
                 }
             }
 
-            // Banner handling is independent and must never prevent translation.
+            // Banner handling remains independent from translation detection.
             if (containsTranslatedBanner(lowTree)) dismissTranslationBanner(root);
         } finally {
             root.recycle();
@@ -151,13 +151,11 @@ public class GranblueAccessibilityService extends AccessibilityService {
                     log("Libellé traduction trouvé mais non cliquable: " + text);
                     continue;
                 }
-                int score = 20;
-                String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-                if (low.equals("traduire") || low.startsWith("traduire la page") || low.startsWith("traduire en ") || low.startsWith("traduire de ")) score += 30;
-                if (low.equals("translate") || low.startsWith("translate page") || low.startsWith("translate to ") || low.startsWith("translate from ")) score += 30;
-                if (low.startsWith("google traduction") || low.startsWith("google translate")) score += 20;
-                if (node.isClickable()) score += 15;
-                if ("android.widget.ImageButton".contentEquals(target.getClassName())) score += 15;
+                int score = 10;
+                String low = text.toLowerCase(Locale.ROOT);
+                if (low.contains("traduire la page") || low.contains("translate page")) score += 20;
+                if (low.contains("google traduction") || low.contains("google translate")) score += 15;
+                if (node.isClickable()) score += 10;
                 if ("android.widget.Button".contentEquals(target.getClassName())) score += 5;
                 String viewId = target.getViewIdResourceName();
                 if (viewId != null && viewId.startsWith(CHROME + ":")) score += 8;
@@ -181,21 +179,10 @@ public class GranblueAccessibilityService extends AccessibilityService {
 
     private boolean isTranslationLabel(String text) {
         String low = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-        if (low.isEmpty() || low.length() > 80) return false;
-
-        // Chrome exposes tab-close controls as "Fermer l'onglet <tab title>".
-        // The previous broad matcher clicked that control because a tab title
-        // contained the word "translation". Never accept such nodes.
-        if (low.contains("fermer l'onglet") || low.contains("fermer l’onglet")
-                || low.contains("close tab") || low.contains("close the tab")) return false;
-
-        // These are the actual Chrome Translate labels, including the v5
-        // accessibility description "Traduire...".
-        return low.equals("traduire") || low.startsWith("traduire...")
-                || low.startsWith("traduire la page") || low.startsWith("traduire en ") || low.startsWith("traduire de ")
-                || low.equals("translate") || low.startsWith("translate...")
-                || low.startsWith("translate page") || low.startsWith("translate to ") || low.startsWith("translate from ")
-                || low.startsWith("google traduction") || low.startsWith("google translate");
+        if (low.isEmpty()) return false;
+        return low.contains("traduire") || low.contains("traduction")
+                || low.contains("translate") || low.contains("translation")
+                || low.contains("google traduction") || low.contains("google translate");
     }
 
     private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
