@@ -92,4 +92,5 @@ public class MainActivity extends Activity {
     String text = getSharedPreferences("log", MODE_PRIVATE)
             .getString("text", "Aucun événement.");
     log.setText(text);
+    }
 }
