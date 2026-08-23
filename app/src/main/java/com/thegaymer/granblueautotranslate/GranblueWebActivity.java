@@ -18,6 +18,7 @@ public class GranblueWebActivity extends Activity {
     private WebView webView;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable pendingTranslation;
+    private String lastObservedUrl = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,8 +50,6 @@ public class GranblueWebActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
 
-        // Present the embedded WebView as ordinary mobile Chrome. Some web apps
-        // change behaviour when the default "; wv" WebView token is present.
         String ua = settings.getUserAgentString();
         ua = ua.replace("; wv", "").replace(" Version/4.0", "");
         settings.setUserAgentString(ua);
@@ -62,11 +61,15 @@ public class GranblueWebActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                super.doUpdateVisitedHistory(view, url, isReload);
+                handleGranblueNavigation(url);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                if (isGranblueUrl(url)) {
-                    scheduleTranslation();
-                }
+                handleGranblueNavigation(url);
             }
         });
     }
@@ -75,13 +78,23 @@ public class GranblueWebActivity extends Activity {
         return url != null && url.startsWith("https://steam.granbluefantasy.com/");
     }
 
-    private void scheduleTranslation() {
+    private void handleGranblueNavigation(String url) {
+        if (!isGranblueUrl(url)) return;
+        if (url.equals(lastObservedUrl)) return;
+
+        lastObservedUrl = url;
+        scheduleTranslation(url);
+    }
+
+    private void scheduleTranslation(final String expectedUrl) {
         if (pendingTranslation != null) {
             handler.removeCallbacks(pendingTranslation);
         }
 
         pendingTranslation = () -> {
-            if (webView == null || !isGranblueUrl(webView.getUrl())) return;
+            if (webView == null) return;
+            String currentUrl = webView.getUrl();
+            if (!expectedUrl.equals(currentUrl) || !isGranblueUrl(currentUrl)) return;
             injectGoogleTranslate();
         };
 
@@ -113,7 +126,6 @@ public class GranblueWebActivity extends Activity {
                 "setTimeout(chooseFrench,250);scheduleHide();return;}" +
                 "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);scheduleHide();};" +
                 "if(!document.getElementById('__gb_google_translate_script')){var s=document.createElement('script');s.id='__gb_google_translate_script';s.src='https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';s.async=true;document.head.appendChild(s);}" +
-                "if(!window.__gbHashHook){window.__gbHashHook=true;window.addEventListener('hashchange',function(){setTimeout(function(){if(window.__gbChooseFrench)window.__gbChooseFrench();if(window.__gbHideGoogleBar)window.__gbHideGoogleBar();},2000);});}" +
                 "})();";
 
         webView.evaluateJavascript(js, null);
