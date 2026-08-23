@@ -131,6 +131,31 @@ public class GranblueWebActivity extends Activity {
         webView.evaluateJavascript(js, null);
     }
 
+    private void pausePageAudio() {
+        if (webView == null) return;
+        String js =
+                "(function(){try{" +
+                "window.__gbPausedMedia=[];" +
+                "document.querySelectorAll('audio,video').forEach(function(m){if(!m.paused){window.__gbPausedMedia.push(m);m.pause();}});" +
+                "if(window.Howler&&typeof Howler.mute==='function'){window.__gbHowlerWasMuted=!!Howler._muted;Howler.mute(true);}" +
+                "if(window.createjs&&createjs.Sound){window.__gbCreatejsWasMuted=!!createjs.Sound.muted;createjs.Sound.muted=true;}" +
+                "if(window.PIXI&&PIXI.sound){window.__gbPixiWasMuted=!!PIXI.sound.muted;if(typeof PIXI.sound.muteAll==='function')PIXI.sound.muteAll();else PIXI.sound.muted=true;}" +
+                "}catch(e){}})();";
+        webView.evaluateJavascript(js, null);
+    }
+
+    private void resumePageAudio() {
+        if (webView == null) return;
+        String js =
+                "(function(){try{" +
+                "if(window.__gbPausedMedia){window.__gbPausedMedia.forEach(function(m){try{m.play();}catch(e){}});window.__gbPausedMedia=[];}" +
+                "if(window.Howler&&typeof Howler.mute==='function'&&window.__gbHowlerWasMuted===false)Howler.mute(false);" +
+                "if(window.createjs&&createjs.Sound&&window.__gbCreatejsWasMuted===false)createjs.Sound.muted=false;" +
+                "if(window.PIXI&&PIXI.sound&&window.__gbPixiWasMuted===false){if(typeof PIXI.sound.unmuteAll==='function')PIXI.sound.unmuteAll();else PIXI.sound.muted=false;}" +
+                "}catch(e){}})();";
+        webView.evaluateJavascript(js, null);
+    }
+
     private void hideSystemUi() {
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -149,6 +174,7 @@ public class GranblueWebActivity extends Activity {
 
     @Override
     protected void onPause() {
+        pausePageAudio();
         if (webView != null) {
             webView.onPause();
             webView.pauseTimers();
@@ -162,6 +188,7 @@ public class GranblueWebActivity extends Activity {
         if (webView != null) {
             webView.resumeTimers();
             webView.onResume();
+            resumePageAudio();
         }
     }
 
