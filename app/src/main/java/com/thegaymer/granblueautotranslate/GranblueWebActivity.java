@@ -94,18 +94,26 @@ public class GranblueWebActivity extends Activity {
                 "if(!location.hostname.endsWith('granbluefantasy.com'))return;" +
                 "var style=document.getElementById('__gb_fr_style');" +
                 "if(!style){style=document.createElement('style');style.id='__gb_fr_style';" +
-                "style.textContent='.goog-te-banner-frame,iframe.goog-te-banner-frame,#goog-gt-tt,.goog-te-balloon-frame,.goog-te-gadget{display:none!important;}body{top:0!important;}';" +
+                "style.textContent='.goog-te-banner-frame,iframe.goog-te-banner-frame,.goog-te-banner-frame.skiptranslate,.VIpgJd-ZVi9od-ORHb,.VIpgJd-ZVi9od-ORHb-OEVmcd,iframe[class*=\\\"VIpgJd-ZVi9od-ORHb\\\"],body>div.skiptranslate,body>iframe.skiptranslate{display:none!important;visibility:hidden!important;height:0!important;max-height:0!important;overflow:hidden!important;}#goog-gt-tt,.goog-te-balloon-frame,.goog-te-gadget{display:none!important;}html,body{top:0!important;margin-top:0!important;}';" +
                 "document.documentElement.appendChild(style);}" +
+                "function hideGoogleBar(){" +
+                "var q=['.goog-te-banner-frame','iframe.goog-te-banner-frame','.VIpgJd-ZVi9od-ORHb','.VIpgJd-ZVi9od-ORHb-OEVmcd','iframe[class*=\\\"VIpgJd-ZVi9od-ORHb\\\"]','body>div.skiptranslate','body>iframe.skiptranslate'];" +
+                "for(var i=0;i<q.length;i++){var n=document.querySelectorAll(q[i]);for(var j=0;j<n.length;j++){if(n[j].id==='google_translate_element')continue;n[j].style.setProperty('display','none','important');n[j].style.setProperty('visibility','hidden','important');n[j].style.setProperty('height','0','important');n[j].style.setProperty('max-height','0','important');}}" +
+                "document.documentElement.style.setProperty('top','0px','important');document.documentElement.style.setProperty('margin-top','0px','important');" +
+                "if(document.body){document.body.style.setProperty('top','0px','important');document.body.style.setProperty('margin-top','0px','important');}" +
+                "}" +
+                "function scheduleHide(){var d=[0,100,250,500,1000,2000,4000,8000];for(var i=0;i<d.length;i++){setTimeout(hideGoogleBar,d[i]);}}" +
+                "scheduleHide();" +
                 "document.cookie='googtrans=/en/fr;path=/';" +
-                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c)return false;c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));return true;}" +
-                "window.__gbChooseFrench=chooseFrench;" +
+                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
+                "window.__gbChooseFrench=chooseFrench;window.__gbHideGoogleBar=hideGoogleBar;" +
                 "if(!document.getElementById('google_translate_element')){var d=document.createElement('div');d.id='google_translate_element';d.style.display='none';document.documentElement.appendChild(d);}" +
                 "if(window.google&&google.translate&&google.translate.TranslateElement){" +
                 "try{if(!window.__gbTranslateWidget){window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}}catch(e){}" +
-                "setTimeout(chooseFrench,250);setTimeout(chooseFrench,800);return;}" +
-                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);setTimeout(chooseFrench,900);};" +
+                "setTimeout(chooseFrench,250);setTimeout(chooseFrench,800);scheduleHide();return;}" +
+                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);setTimeout(chooseFrench,900);scheduleHide();};" +
                 "if(!document.getElementById('__gb_google_translate_script')){var s=document.createElement('script');s.id='__gb_google_translate_script';s.src='https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';s.async=true;document.head.appendChild(s);}" +
-                "if(!window.__gbHashHook){window.__gbHashHook=true;window.addEventListener('hashchange',function(){setTimeout(function(){if(window.__gbChooseFrench)window.__gbChooseFrench();},2000);});}" +
+                "if(!window.__gbHashHook){window.__gbHashHook=true;window.addEventListener('hashchange',function(){setTimeout(function(){if(window.__gbChooseFrench)window.__gbChooseFrench();if(window.__gbHideGoogleBar)window.__gbHideGoogleBar();},2000);});}" +
                 "})();";
 
         webView.evaluateJavascript(js, null);
