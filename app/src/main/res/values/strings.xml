@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Granblue FR</string>
+    <string name="app_name">Granblue Fantasy FR</string>
     <string name="service_label">Granblue Auto Translate</string>
     <string name="service_description">Automatise la traduction des pages Granblue Fantasy dans Chrome.</string>
 </resources>
