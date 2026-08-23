@@ -110,8 +110,8 @@ public class GranblueWebActivity extends Activity {
                 "if(!document.getElementById('google_translate_element')){var d=document.createElement('div');d.id='google_translate_element';d.style.display='none';document.documentElement.appendChild(d);}" +
                 "if(window.google&&google.translate&&google.translate.TranslateElement){" +
                 "try{if(!window.__gbTranslateWidget){window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}}catch(e){}" +
-                "setTimeout(chooseFrench,250);setTimeout(chooseFrench,800);scheduleHide();return;}" +
-                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);setTimeout(chooseFrench,900);scheduleHide();};" +
+                "setTimeout(chooseFrench,250);scheduleHide();return;}" +
+                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);scheduleHide();};" +
                 "if(!document.getElementById('__gb_google_translate_script')){var s=document.createElement('script');s.id='__gb_google_translate_script';s.src='https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';s.async=true;document.head.appendChild(s);}" +
                 "if(!window.__gbHashHook){window.__gbHashHook=true;window.addEventListener('hashchange',function(){setTimeout(function(){if(window.__gbChooseFrench)window.__gbChooseFrench();if(window.__gbHideGoogleBar)window.__gbHideGoogleBar();},2000);});}" +
                 "})();";
