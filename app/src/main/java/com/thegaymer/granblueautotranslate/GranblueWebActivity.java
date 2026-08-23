@@ -145,6 +145,7 @@ public class GranblueWebActivity extends Activity {
                 "}" +
                 "if(window.createjs&&createjs.Sound){window.__gbCreatejsWasMuted=!!createjs.Sound.muted;createjs.Sound.muted=true;}" +
                 "if(window.PIXI&&PIXI.sound){window.__gbPixiWasMuted=!!PIXI.sound.muted;if(typeof PIXI.sound.muteAll==='function')PIXI.sound.muteAll();else PIXI.sound.muted=true;}" +
+                "window.dispatchEvent(new Event('blur'));" +
                 "return true;" +
                 "}catch(e){return false;}})();";
 
@@ -167,6 +168,7 @@ public class GranblueWebActivity extends Activity {
                 "}" +
                 "if(window.createjs&&createjs.Sound&&window.__gbCreatejsWasMuted===false)createjs.Sound.muted=false;" +
                 "if(window.PIXI&&PIXI.sound&&window.__gbPixiWasMuted===false){if(typeof PIXI.sound.unmuteAll==='function')PIXI.sound.unmuteAll();else PIXI.sound.muted=false;}" +
+                "window.dispatchEvent(new Event('focus'));" +
                 "}catch(e){}})();";
         webView.evaluateJavascript(js, null);
     }
