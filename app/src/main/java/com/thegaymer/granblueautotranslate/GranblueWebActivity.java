@@ -118,7 +118,7 @@ public class GranblueWebActivity extends Activity {
                 "function scheduleHide(){var d=[0,100,250,500,1000,2000,4000,8000];for(var i=0;i<d.length;i++){setTimeout(hideGoogleBar,d[i]);}}" +
                 "scheduleHide();" +
                 "document.cookie='googtrans=/en/fr;path=/';" +
-                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
+                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}if(c.value==='fr'){scheduleHide();return true;}c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
                 "window.__gbChooseFrench=chooseFrench;window.__gbHideGoogleBar=hideGoogleBar;" +
                 "if(!document.getElementById('google_translate_element')){var d=document.createElement('div');d.id='google_translate_element';d.style.display='none';document.documentElement.appendChild(d);}" +
                 "if(window.google&&google.translate&&google.translate.TranslateElement){" +
