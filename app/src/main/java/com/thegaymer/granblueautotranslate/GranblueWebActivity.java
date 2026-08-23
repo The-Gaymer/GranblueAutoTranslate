@@ -124,18 +124,12 @@ public class GranblueWebActivity extends Activity {
                 "scheduleHide();" +
                 "document.cookie='googtrans=/en/fr;path=/';" +
                 "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}hideExistingTextFor200ms();c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
-                "function translateCurrentView(){var d=[100,300,700,1500];for(var i=0;i<d.length;i++){setTimeout(function(){chooseFrench();},d[i]);}scheduleHide();}" +
-                "window.__gbChooseFrench=chooseFrench;window.__gbHideGoogleBar=hideGoogleBar;window.__gbTranslateCurrentView=translateCurrentView;" +
-                "if(!window.__gbSpaTranslationInstalled){window.__gbSpaTranslationInstalled=true;" +
-                "window.addEventListener('hashchange',translateCurrentView);window.addEventListener('popstate',translateCurrentView);" +
-                "if(window.history&&history.pushState){var p=history.pushState;history.pushState=function(){var r=p.apply(this,arguments);translateCurrentView();return r;};}" +
-                "if(window.history&&history.replaceState){var r=history.replaceState;history.replaceState=function(){var v=r.apply(this,arguments);translateCurrentView();return v;};}" +
-                "}" +
+                "window.__gbChooseFrench=chooseFrench;window.__gbHideGoogleBar=hideGoogleBar;" +
                 "if(!document.getElementById('google_translate_element')){var d=document.createElement('div');d.id='google_translate_element';d.style.display='none';document.documentElement.appendChild(d);}" +
                 "if(window.google&&google.translate&&google.translate.TranslateElement){" +
                 "try{if(!window.__gbTranslateWidget){window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}}catch(e){}" +
-                "translateCurrentView();scheduleHide();return;}" +
-                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}translateCurrentView();scheduleHide();};" +
+                "setTimeout(chooseFrench,250);scheduleHide();return;}" +
+                "window.googleTranslateElementInit=function(){try{window.__gbTranslateWidget=new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'fr',autoDisplay:false},'google_translate_element');}catch(e){}setTimeout(chooseFrench,250);scheduleHide();};" +
                 "if(!document.getElementById('__gb_google_translate_script')){var s=document.createElement('script');s.id='__gb_google_translate_script';s.src='https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';s.async=true;document.head.appendChild(s);}" +
                 "})();";
 
