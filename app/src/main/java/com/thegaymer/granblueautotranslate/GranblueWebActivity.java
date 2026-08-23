@@ -107,7 +107,7 @@ public class GranblueWebActivity extends Activity {
                 "if(!location.hostname.endsWith('granbluefantasy.com'))return;" +
                 "var style=document.getElementById('__gb_fr_style');" +
                 "if(!style){style=document.createElement('style');style.id='__gb_fr_style';" +
-                "style.textContent='.goog-te-banner-frame,iframe.goog-te-banner-frame,.goog-te-banner-frame.skiptranslate,.VIpgJd-ZVi9od-ORHb,.VIpgJd-ZVi9od-ORHb-OEVmcd,iframe[class*=\\\"VIpgJd-ZVi9od-ORHb\\\"],body>div.skiptranslate,body>iframe.skiptranslate{display:none!important;visibility:hidden!important;height:0!important;max-height:0!important;overflow:hidden!important;}#goog-gt-tt,.goog-te-balloon-frame,.goog-te-gadget{display:none!important;}html,body{top:0!important;margin-top:0!important;}';" +
+                "style.textContent='.goog-te-banner-frame,iframe.goog-te-banner-frame,.goog-te-banner-frame.skiptranslate,.VIpgJd-ZVi9od-ORHb,.VIpgJd-ZVi9od-ORHb-OEVmcd,iframe[class*=\\\"VIpgJd-ZVi9od-ORHb\\\"],body>div.skiptranslate,body>iframe.skiptranslate{display:none!important;visibility:hidden!important;height:0!important;max-height:0!important;overflow:hidden!important;}#goog-gt-tt,.goog-te-balloon-frame,.goog-te-gadget{display:none!important;}html,body{top:0!important;margin-top:0!important;}.__gb_fr_pending_text{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;}';" +
                 "document.documentElement.appendChild(style);}" +
                 "function hideGoogleBar(){" +
                 "var q=['.goog-te-banner-frame','iframe.goog-te-banner-frame','.VIpgJd-ZVi9od-ORHb','.VIpgJd-ZVi9od-ORHb-OEVmcd','iframe[class*=\\\"VIpgJd-ZVi9od-ORHb\\\"]','body>div.skiptranslate','body>iframe.skiptranslate'];" +
@@ -116,9 +116,14 @@ public class GranblueWebActivity extends Activity {
                 "if(document.body){document.body.style.setProperty('top','0px','important');document.body.style.setProperty('margin-top','0px','important');}" +
                 "}" +
                 "function scheduleHide(){var d=[0,100,250,500,1000,2000,4000,8000];for(var i=0;i<d.length;i++){setTimeout(hideGoogleBar,d[i]);}}" +
+                "function isTextTarget(el){if(!el||el.nodeType!==1)return false;if(el.id==='google_translate_element'||el.closest('#google_translate_element'))return false;if(el.closest('.skiptranslate'))return false;var tag=el.tagName;if(tag==='SCRIPT'||tag==='STYLE'||tag==='NOSCRIPT'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||tag==='OPTION')return false;if(el.children.length!==0)return false;var t=(el.textContent||'').trim();return t.length>0&&/[A-Za-z]/.test(t);}" +
+                "function hideTextFor200ms(el){if(!isTextTarget(el)||el.classList.contains('__gb_fr_pending_text'))return;el.classList.add('__gb_fr_pending_text');setTimeout(function(){el.classList.remove('__gb_fr_pending_text');},200);}" +
+                "function scanTextNode(node){if(!node)return;if(node.nodeType===3){hideTextFor200ms(node.parentElement);return;}if(node.nodeType!==1)return;hideTextFor200ms(node);var all=node.querySelectorAll('*');for(var i=0;i<all.length;i++)hideTextFor200ms(all[i]);}" +
+                "function hideExistingTextFor200ms(){if(!document.body)return;var all=document.body.querySelectorAll('*');for(var i=0;i<all.length;i++)hideTextFor200ms(all[i]);}" +
+                "if(!window.__gbTextObserver){window.__gbTextObserver=new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var m=ms[i];if(m.type==='characterData'){hideTextFor200ms(m.target.parentElement);}else if(m.type==='childList'){for(var j=0;j<m.addedNodes.length;j++)scanTextNode(m.addedNodes[j]);}}});window.__gbTextObserver.observe(document.documentElement,{subtree:true,childList:true,characterData:true});}" +
                 "scheduleHide();" +
                 "document.cookie='googtrans=/en/fr;path=/';" +
-                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
+                "function chooseFrench(){var c=document.querySelector('.goog-te-combo');if(!c){scheduleHide();return false;}hideExistingTextFor200ms();c.value='fr';c.dispatchEvent(new Event('change',{bubbles:true}));scheduleHide();return true;}" +
                 "window.__gbChooseFrench=chooseFrench;window.__gbHideGoogleBar=hideGoogleBar;" +
                 "if(!document.getElementById('google_translate_element')){var d=document.createElement('div');d.id='google_translate_element';d.style.display='none';document.documentElement.appendChild(d);}" +
                 "if(window.google&&google.translate&&google.translate.TranslateElement){" +
