@@ -131,27 +131,46 @@ public class GranblueWebActivity extends Activity {
         webView.evaluateJavascript(js, null);
     }
 
-    private void pausePageAudio() {
+    private void pausePageAudioAndSuspendWebView() {
         if (webView == null) return;
+
         String js =
                 "(function(){try{" +
                 "window.__gbPausedMedia=[];" +
                 "document.querySelectorAll('audio,video').forEach(function(m){if(!m.paused){window.__gbPausedMedia.push(m);m.pause();}});" +
-                "if(window.Howler&&typeof Howler.mute==='function'){window.__gbHowlerWasMuted=!!Howler._muted;Howler.mute(true);}" +
+                "if(window.Howler){" +
+                "window.__gbHowlerWasMuted=!!Howler._muted;" +
+                "if(typeof Howler.mute==='function')Howler.mute(true);" +
+                "if(Howler.ctx&&typeof Howler.ctx.suspend==='function'&&Howler.ctx.state==='running'){window.__gbHowlerCtxWasRunning=true;Howler.ctx.suspend();}" +
+                "}" +
                 "if(window.createjs&&createjs.Sound){window.__gbCreatejsWasMuted=!!createjs.Sound.muted;createjs.Sound.muted=true;}" +
                 "if(window.PIXI&&PIXI.sound){window.__gbPixiWasMuted=!!PIXI.sound.muted;if(typeof PIXI.sound.muteAll==='function')PIXI.sound.muteAll();else PIXI.sound.muted=true;}" +
-                "}catch(e){}})();";
-        webView.evaluateJavascript(js, null);
+                "window.dispatchEvent(new Event('blur'));" +
+                "window.dispatchEvent(new Event('pagehide'));" +
+                "return true;" +
+                "}catch(e){return false;}})();";
+
+        webView.evaluateJavascript(js, value -> {
+            if (webView != null) {
+                webView.onPause();
+                webView.pauseTimers();
+            }
+        });
     }
 
     private void resumePageAudio() {
         if (webView == null) return;
         String js =
                 "(function(){try{" +
-                "if(window.__gbPausedMedia){window.__gbPausedMedia.forEach(function(m){try{m.play();}catch(e){}});window.__gbPausedMedia=[];}" +
-                "if(window.Howler&&typeof Howler.mute==='function'&&window.__gbHowlerWasMuted===false)Howler.mute(false);" +
+                "if(window.__gbPausedMedia){window.__gbPausedMedia.forEach(function(m){try{var p=m.play();if(p&&p.catch)p.catch(function(){});}catch(e){}});window.__gbPausedMedia=[];}" +
+                "if(window.Howler){" +
+                "if(window.__gbHowlerCtxWasRunning&&Howler.ctx&&typeof Howler.ctx.resume==='function'){Howler.ctx.resume();window.__gbHowlerCtxWasRunning=false;}" +
+                "if(typeof Howler.mute==='function'&&window.__gbHowlerWasMuted===false)Howler.mute(false);" +
+                "}" +
                 "if(window.createjs&&createjs.Sound&&window.__gbCreatejsWasMuted===false)createjs.Sound.muted=false;" +
                 "if(window.PIXI&&PIXI.sound&&window.__gbPixiWasMuted===false){if(typeof PIXI.sound.unmuteAll==='function')PIXI.sound.unmuteAll();else PIXI.sound.muted=false;}" +
+                "window.dispatchEvent(new Event('pageshow'));" +
+                "window.dispatchEvent(new Event('focus'));" +
                 "}catch(e){}})();";
         webView.evaluateJavascript(js, null);
     }
@@ -174,11 +193,7 @@ public class GranblueWebActivity extends Activity {
 
     @Override
     protected void onPause() {
-        pausePageAudio();
-        if (webView != null) {
-            webView.onPause();
-            webView.pauseTimers();
-        }
+        pausePageAudioAndSuspendWebView();
         super.onPause();
     }
 
