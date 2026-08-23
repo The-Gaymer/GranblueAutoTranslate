@@ -13,6 +13,27 @@ android {
         versionCode 1
         versionName '1.0'
     }
+
+    sourceSets {
+        main.res.srcDir "$buildDir/generated/res/launcherIcon"
+    }
+}
+
+tasks.register('generateLauncherIcon') {
+    def encodedIcon = file('src/main/icon/granblue_fantasy_icon.b64')
+    def outputDir = file("$buildDir/generated/res/launcherIcon/drawable")
+    inputs.file(encodedIcon)
+    outputs.dir(outputDir)
+
+    doLast {
+        outputDir.mkdirs()
+        def bytes = encodedIcon.text.trim().decodeBase64()
+        new File(outputDir, 'granblue_fantasy_icon.webp').bytes = bytes
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('generateLauncherIcon')
 }
 
 dependencies {
